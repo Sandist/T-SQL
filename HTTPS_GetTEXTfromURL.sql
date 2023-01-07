@@ -17,7 +17,7 @@ BEGIN
  
     EXEC @Result = sp_OAMethod @Obj, 'open', NULL, 'GET', @url, false
 	IF NULLIF(@Token,'') IS NOT NULL
-		EXEC @Result = sp_OAMethod @Obj, 'setRequestHeader', null, 'token', '555f9bbc-fc08-4dd1-b64b-e4289b221383'
+		EXEC @Result = sp_OAMethod @Obj, 'setRequestHeader', null, 'token', @Token
     EXEC @Result = sp_OAMethod @Obj, 'setRequestHeader', NULL, 'Content-Type', 'application/x-www-form-urlencoded'
     EXEC @Result = sp_OAMethod @Obj, send, NULL, ''
     EXEC @Result = sp_OAGetProperty @Obj, 'status', @HTTPStatus OUT 
