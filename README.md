@@ -6,3 +6,4 @@
 - `Table as an input parameter in a procedure.sql` - Пример использования таблицы как входного параметра для процедуры
 - `HTTPS_GetTEXTfromUR.sql` - Получаем текст с https ресурса. Пример передачи токена в заголовке 
 - `get_TestConnection.sql` - Пример проверки соединения с сервером (ping)
+- `EXEC_WITH_RESULT_SETS.sql` - Иногда при выполнении запроса на удаленном сервере необходимо задать метаданные вручную. Пример использования WITH RESULT SETS
