@@ -9,6 +9,7 @@ AS
 		--1 @Mode = sqltest - отправляем запрос на сервер и не ожидаем ответа более 3 секунд
 		--2 @Mode = pssqltest - отправляем запрос к серверу используя powershell - то есть создаем новое соединение
 		--3 @Mode = ping - пингуем сервер используя powershell
+		--4 @Mode = testlinkedserver - проверяем соединение по связанному серверу используя процедуру sp_testlinkedserver
 	
 	--https://fixmypc.ru/post/test-connection-ili-zamena-ping-v-powershell/
 BEGIN
@@ -29,10 +30,14 @@ BEGIN
 
 	if @Mode = 'sqltest'
 		BEGIN TRY
+			--SET @cmd = '
+			--declare @s varchar(max) = ''IF EXISTS ('+@Query+') SELECT 1 ELSE SELECT 2''
+			--EXEC (@s) at ['+@ServerName+']'
+
 			SET @cmd = 'IF EXISTS (SELECT TOP 1 1
 								   FROM OPENQUERY('+@ServerName+','''+@Query+''')
 								   ) SELECT 1 ELSE SELECT 2'
-			print @cmd
+			--print @cmd
 			insert into #res (mes)
 			EXEC (@cmd)
 		END TRY
@@ -40,10 +45,20 @@ BEGIN
 			truncate table #res
 		END CATCH
 
+	if @Mode = 'testlinkedserver'
+		BEGIN TRY
+			SET @cmd = 'exec sp_testlinkedserver ' + @ServerName 
+			EXEC (@cmd)
+			RETURN 1
+		END TRY
+		BEGIN CATCH
+			RETURN 0
+		END CATCH
+
 
 	IF @Mode <> 'sqltest'
 		begin try
-			print @cmd
+			--print @cmd
 			insert into #res (mes)
 			EXEC master.dbo.xp_cmdshell @cmd
 		end try
