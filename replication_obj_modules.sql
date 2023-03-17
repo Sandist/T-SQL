@@ -33,12 +33,33 @@ BEGIN
 	END
 
 	--делаем снимок таблицы настроек
+	--srv_type = 1 - в поле srv_kuda будут указаны подчиненные сервера, разделителем будет "|" (вертикальная черта)
+	--srv_type = 2 - в поле srv_kuda будет указан extid из таблицы Elf.dbo.текстовыйЭкспорт
 	DROP TABLE IF EXISTS #replication_objects
-	SELECT *
+	SELECT DISTINCT 
+		   id, srv, db, scma, obj
+	      ,t.[value] as srv_kuda
+		  ,srv_type
 	INTO #replication_objects
-	FROM ITBASE.dbo.replication_objects
-	WHERE srv = @@SERVERNAME
-	  AND deleted = 0
+	FROM (
+			SELECT id, srv, db, scma, obj, srv_kuda, srv_type
+			FROM ITBASE.dbo.replication_objects
+			WHERE srv = @@SERVERNAME
+			  AND deleted = 0
+			  AND srv_type = 1
+			UNION ALL
+			SELECT id, srv, db, scma, obj, CONVERT(VARCHAR(MAX),t.РасширенныйКомментарий) as srv_kuda, srv_type
+			FROM ITBASE.dbo.replication_objects ro
+			INNER JOIN Elf.dbo.текстовыйЭкспорт t
+				ON ro.srv_kuda = t.ExtID
+			WHERE srv = @@SERVERNAME
+			  AND ro.deleted = 0 and t.deleted = 0
+			  AND ro.srv_type = 2
+		 ) A
+	OUTER APPLY(SELECT *
+	            FROM STRING_SPLIT(srv_kuda,'|')
+				) t
+	WHERE srv <> t.[value]
 
 	--Получаем все базы данных текущего сервера в которых нас интересуют объекты
 	--так как sys.objects у каждой базы свой, поэтому для каждой базы придется собирать инфу отдельно
@@ -54,7 +75,7 @@ BEGIN
 		   ,@obj_action varchar(100)
 		   ,@obj_type varchar(10)
 		   ,@obj_type_word varchar(50)
-		   ,@id_task int
+		   --,@id_task int
 		   ,@SQL VARCHAR(max) = ''
 		   ,@NSQL NVARCHAR(MAX) = N''
 		   ,@obj_text nvarchar(max) = N''
@@ -123,8 +144,8 @@ BEGIN
 		END TRY
 		BEGIN CATCH
 			--Если доступа нет , тогда будем писать в лог и идти дальше
-			insert into ITBASE.dbo.replication_objects_log(id_task, error_text)
-			select id, 'Не удалось получить доступ к серверу ['+@srv+']'
+			insert into ITBASE.dbo.replication_objects_log(id_task, error_text, srv_kuda)
+			select DISTINCT id, 'Не удалось получить доступ к серверу ['+@srv+']', srv_kuda
 			from #replication_objects
 			where srv_kuda = @srv
 
@@ -215,8 +236,8 @@ BEGIN
 		AND r.srv_kuda = k.srv_kuda
 
 	-- obj_action = ERROR - выше описал
-	insert into ITBASE.dbo.replication_objects_log(id_task, error_text)
-	SELECT id, 'ОШИБКА! на реплицируемом сервере существует объект с таким же БД.СХЕМА.ИМЯ, но другим типом'
+	insert into ITBASE.dbo.replication_objects_log(id_task, error_text, srv_kuda)
+	SELECT DISTINCT id, 'ОШИБКА! на реплицируемом сервере ['+srv_kuda+'] существует объект ['+db+'].['+scma+'].['+obj+'] с таким же БД.СХЕМА.ИМЯ, но другим типом', srv_kuda
 	FROM #fin
 	WHERE obj_action = 'ERROR'
 
@@ -273,7 +294,7 @@ BEGIN
 		--перебираем все сервера на которых запускаем подготовленный выше запрос 
 		DECLARE CUR_SRV_FIN CURSOR FORWARD_ONLY READ_ONLY
 		FOR
-			SELECT id, srv_kuda
+			SELECT DISTINCT srv_kuda
 			FROM #fin
 			WHERE db = @db
 			  AND scma = @scma
@@ -282,7 +303,7 @@ BEGIN
 			  AND obj_type = @obj_type
 
 		OPEN CUR_SRV_FIN
-		FETCH NEXT FROM CUR_SRV_FIN INTO @id_task, @srv
+		FETCH NEXT FROM CUR_SRV_FIN INTO @srv
 
 		WHILE @@FETCH_STATUS = 0
 		BEGIN
@@ -322,15 +343,29 @@ BEGIN
 				--пишем в лог, что все успешно выполнили
 				--есть нюанс, дело в том, что try...catch не отлавливает ошибки связанные с отсутствием объектов
 				--поэтому для таких случаев пишем ошибку на всякий в лог даже после "успешного" выполнения
-				INSERT INTO itbase.dbo.replication_objects_log (id_task, command_type, error_text)
-				SELECT @id_task, LEFT(@obj_action,1), ISNULL(NULLIF(@err,''),ERROR_MESSAGE())
+				INSERT INTO itbase.dbo.replication_objects_log (id_task, command_type, error_text, srv_kuda)
+				SELECT id, LEFT(obj_action,1), ISNULL(NULLIF(@err,''),ERROR_MESSAGE()), srv_kuda
+				FROM #fin
+				WHERE db = @db
+				  AND scma = @scma
+				  AND obj = @obj
+				  AND obj_action = @obj_action
+				  AND obj_type = @obj_type
+				  AND srv_kuda = @srv
 			END TRY
 			BEGIN CATCH
-				INSERT INTO itbase.dbo.replication_objects_log (id_task, command_type, error_text)
-				SELECT @id_task, LEFT(@obj_action,1), ERROR_MESSAGE()
+				INSERT INTO itbase.dbo.replication_objects_log (id_task, command_type, error_text, srv_kuda)
+				SELECT id, LEFT(@obj_action,1), ERROR_MESSAGE(), srv_kuda
+				FROM #fin
+				WHERE db = @db
+				  AND scma = @scma
+				  AND obj = @obj
+				  AND obj_action = @obj_action
+				  AND obj_type = @obj_type
+				  AND srv_kuda = @srv
 			END CATCH
 
-			FETCH NEXT FROM CUR_SRV_FIN INTO @id_task, @srv
+			FETCH NEXT FROM CUR_SRV_FIN INTO @srv
 		END
 		CLOSE CUR_SRV_FIN
 		DEALLOCATE CUR_SRV_FIN
