@@ -1,0 +1,35 @@
+create or alter function JR_S2200.filterString$TIN (@TIN varchar(1020))
+       returns varchar(12)
+    with returns null on null input,
+       schemabinding
+as
+begin
+      
+       set @TIN = rtrim(@TIN)
+ 
+    declare @len int = len(@TIN);
+ 
+       if @len in (9,11)
+              select @TIN = '0' + @TIN
+                     , @len += 1
+   
+    if @len not in (10, 12) or JR_S2200.filterString$numbersOnly(@TIN) is null
+        return null
+ 
+    if @len = 10
+       begin
+              if cast(substring(@TIN, 10, 1) as int) = (      select (sum(substring(@TIN, pos, 1) * coeff) % 11) % 10 as checkSum10
+                                                                                         from (values (1, 2), (2, 4), (3, 10), (4, 3), (5, 5), (6, 9), (7, 4), (8, 6), (9, 8)) t(pos,coeff))
+                     return @TIN
+       end
+    else if @len = 12
+       begin
+        if (cast(substring(@TIN, 11, 1) as int) = (select (sum(substring(@TIN, pos, 1) * coeff) % 11) % 10
+                                                                                    from (values (1, 7), (2, 2), (3, 4), (4, 10), (5, 3), (6, 5), (7, 9), (8, 4), (9, 6), (10, 8)) t(pos,coeff)))
+           and (cast(substring(@TIN, 12, 1) as int) = (       select (sum(substring(@TIN, pos, 1) * coeff) % 11) % 10
+                                                                                                from (values (1, 3), (2, 7), (3, 2), (4, 4), (5, 10), (6, 3), (7, 5), (8, 9), (9, 4), (10, 6), (11, 8))t(pos,coeff)))
+            return @TIN
+       end
+ 
+    return null;
+end;
