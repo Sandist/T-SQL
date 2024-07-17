@@ -16,3 +16,4 @@
 - `replication_obj_modules.sql` - процедура реплицирует программные модули с сервера мастер на сервера подписчики
 - `HITS.sql` - решил сохранить пример скрипта витрины из SnowFlake
 - `filterString$TIN` - Валидация ИНН
+- `fillTable#ALLOC#TEAM_TO_PPM_ENTITY` - пример hashbytes в merge на лету
